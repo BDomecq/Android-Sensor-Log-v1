@@ -10,6 +10,7 @@ import android.hardware.SensorManager;
 import android.os.Environment;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
@@ -24,6 +25,14 @@ import java.io.OutputStreamWriter;
 import java.util.Calendar;
 import java.util.LinkedList;
 
+
+import android.content.ContentValues;
+import android.net.Uri;
+import android.provider.MediaStore;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+
 //AGREGADOS
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -36,12 +45,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     Button buttonStop;  //STOP!!
     boolean isRunning;
     final String TAG = "SensorLog";
-    FileWriter writer;
+    Writer writer;
 
     //-------------------------------------------
     // AGREGADOS !!
     //-------------------------------------------
     public static final int SENSOR_DELAY_FASTEST = 0;
+    public static final int UPLOADING_DELAY = 500000;
     boolean Headears;
 
     SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss.SSS");
@@ -54,6 +64,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
 
     //-------------------------------------------
+
+    Handler handler = new Handler();
+    Runnable runnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isRunning) {
+                closeCurrentCsvFile();
+                startNewCsvFile();
+                handler.postDelayed(this, UPLOADING_DELAY);
+            }
+        }
+    };
 
 
     @Override
@@ -76,19 +98,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                 Calendar c = Calendar.getInstance();
 
-                Log.d(TAG, "Writing to " + getStorageDir());
-
-
-                try {
-                    //writer = new FileWriter(new File(getStorageDir(), "Sensor_Log_" + System.currentTimeMillis() + ".csv"));
-                    //modificado
-                    writer = new FileWriter(new File(getStorageDir(), "Sensor_Log_" + c.get(Calendar.YEAR) + "-" + (c.get(Calendar.MONTH) + 1)
-                            + "-" + c.get(Calendar.DAY_OF_MONTH) + "-" + c.get(Calendar.HOUR_OF_DAY) + "-" + c.get(Calendar.MINUTE) +
-                            c.get(Calendar.SECOND) + ".csv"));
-
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+                startNewCsvFile();
 
                 manager.registerListener(MainActivity.this, manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SENSOR_DELAY_FASTEST);
                 manager.registerListener(MainActivity.this, manager.getDefaultSensor(Sensor.TYPE_GYROSCOPE), SENSOR_DELAY_FASTEST);
@@ -100,6 +110,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                 isRunning = true;
                 Headears = true;
+
+                handler.postDelayed(runnable, UPLOADING_DELAY);
+
                 return true;
             }
         });
@@ -108,7 +121,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             public boolean onTouch(View view, MotionEvent motionEvent) {
                 buttonStart.setEnabled(true);
                 buttonStop.setEnabled(false);
+
                 isRunning = false;
+                handler.removeCallbacks(runnable);
+
                 manager.flush(MainActivity.this);
                 manager.unregisterListener(MainActivity.this);
                 try {
@@ -116,14 +132,58 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
+
                 return true;
             }
         });
     }
 
+    //private Writer writer; // Cambia a Writer
+
+    private void startNewCsvFile() {
+        Calendar c = Calendar.getInstance();
+        String fileName = "Sensor_Log_" + c.get(Calendar.YEAR) + "-" + (c.get(Calendar.MONTH) + 1) + "-" + c.get(Calendar.DAY_OF_MONTH) + "-" + c.get(Calendar.HOUR_OF_DAY) + "-" + c.get(Calendar.MINUTE) + c.get(Calendar.SECOND) + ".csv";
+
+        try {
+            if (writer != null) {
+                writer.close();
+            }
+
+            Uri uri = createFileInMediaStore(fileName);
+            if (uri != null) {
+                OutputStream outputStream = getContentResolver().openOutputStream(uri);
+                writer = new OutputStreamWriter(outputStream);
+            }
+            Headears = true; // Indica que se deben escribir los encabezados en el nuevo archivo
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private Uri createFileInMediaStore(String fileName) {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+        values.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/SensorLogs");
+
+        return getContentResolver().insert(MediaStore.Files.getContentUri("external"), values);
+    }
+
+
+    private void closeCurrentCsvFile() {
+        if (writer != null) {
+            try {
+                writer.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+
     private String getStorageDir() {
         return this.getExternalFilesDir(null).getAbsolutePath();
-      //  return "/storage/emulated/0/Android/data/com.iam360.sensorlog/";
+        //return "/storage/emulated/0/Android/io.iam360.sensorlog";
     }
 
     @Override
@@ -143,7 +203,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 Headears = false;
             }
             catch (IOException e) {
-            e.printStackTrace();
+                e.printStackTrace();
             }
         }
 
