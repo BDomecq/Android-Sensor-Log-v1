@@ -33,12 +33,18 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
+
 //AGREGADOS
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
 
-public class MainActivity extends AppCompatActivity implements SensorEventListener2 {
+public class MainActivity extends AppCompatActivity implements SensorEventListener2, LocationListener {
 
     SensorManager manager;
     Button buttonStart; //START!!
@@ -46,6 +52,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     boolean isRunning;
     final String TAG = "SensorLog";
     Writer writer;
+
+    private LocationManager locationManager;
+    private boolean isGPSEnabled;
+    private Location lastLocation;
 
     //-------------------------------------------
     // AGREGADOS !!
@@ -86,6 +96,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         isRunning = false;
 
         manager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        isGPSEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+
+        if (isGPSEnabled) {
+            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+            } else {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 10, this);
+            }
+        }
 
         buttonStart = (Button)findViewById(R.id.buttonStart);
         buttonStop = (Button)findViewById(R.id.buttonStop);
@@ -193,13 +214,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     public void onSensorChanged(SensorEvent evt) {
-
         String formattedTime = dateFormat.format(new Date(evt.timestamp / 1000000L));
+        double latitude = 0.0, longitude = 0.0;
+
+        if (lastLocation != null) {
+            latitude = lastLocation.getLatitude();
+            longitude = lastLocation.getLongitude();
+        }
 
         if(Headears && isRunning) {
             try {
-                //escribo los headers
-                writer.write(String.format("timestamp; Type; X; Y; Z; W-Xbias; Y-bias; Z-bias\n"));
+                // Agrego latitud y longitud en los headers
+                writer.write(String.format("timestamp; Type; X; Y; Z; W-Xbias; Y-bias; Z-bias; Latitude; Longitude\n"));
                 Headears = false;
             }
             catch (IOException e) {
@@ -211,30 +237,61 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             try {
                 switch(evt.sensor.getType()) {
                     case Sensor.TYPE_ACCELEROMETER:
-                        //currentTime[0] = System.nanoTime();
-                        //elapsedTime[0] = (currentTime[0] - previousTime[0]) /1000; //microsegundos
-                        writer.write(String.format("%s; ACC; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], 0.f, 0.f, 0.f));
+                        writer.write(String.format("%s; ACC; %f; %f; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], 0.f, 0.f, 0.f, latitude, longitude));
                         break;
                     case Sensor.TYPE_GYROSCOPE_UNCALIBRATED:
-                        writer.write(String.format("%s; GYRO_UN; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], evt.values[3], evt.values[4], evt.values[5]));
+                        writer.write(String.format("%s; GYRO_UN; %f; %f; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], evt.values[3], evt.values[4], evt.values[5], latitude, longitude));
                         break;
                     case Sensor.TYPE_GYROSCOPE:
-                        writer.write(String.format("%s; GYRO; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], 0.f, 0.f, 0.f));
+                        writer.write(String.format("%s; GYRO; %f; %f; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], 0.f, 0.f, 0.f, latitude, longitude));
                         break;
                     case Sensor.TYPE_MAGNETIC_FIELD:
-                        writer.write(String.format("%s; MAG; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], 0.f, 0.f, 0.f));
+                        writer.write(String.format("%s; MAG; %f; %f; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], 0.f, 0.f, 0.f, latitude, longitude));
                         break;
                     case Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED:
-                        writer.write(String.format("%s; MAG_UN; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], 0.f, 0.f, 0.f));
+                        writer.write(String.format("%s; MAG_UN; %f; %f; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], 0.f, 0.f, 0.f, latitude, longitude));
                         break;
                     case Sensor.TYPE_ROTATION_VECTOR:
-                        writer.write(String.format("%s; ROT; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], evt.values[3], 0.f, 0.f));
+                        writer.write(String.format("%s; ROT; %f; %f; %f; %f; %f; %f; %f; %f\n", formattedTime, evt.values[0], evt.values[1], evt.values[2], evt.values[3], 0.f, 0.f, latitude, longitude));
                         break;
-
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             }
+        }
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+        lastLocation = location;
+    }
+
+    @Override
+    public void onStatusChanged(String provider, int status, Bundle extras) {
+    }
+
+    @Override
+    public void onProviderEnabled(String provider) {
+    }
+
+    @Override
+    public void onProviderDisabled(String provider) {
+    }
+
+    // Manejo de onResume y onPause para GPS
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (isGPSEnabled && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 10, this);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (locationManager != null) {
+            locationManager.removeUpdates(this);
         }
     }
 
